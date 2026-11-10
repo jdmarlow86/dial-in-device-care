@@ -80,5 +80,38 @@ async function clearDeviceCareCache(){
  }finally{button.disabled=false;button.innerHTML="<span>⌁</span> Clear cache";}
 }
 
+
+function detectBrowser(){
+ const ua=navigator.userAgent||"",mobile=navigator.userAgentData?.mobile??/Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+ let browser="Unknown browser";
+ if(/Edg\//.test(ua))browser="Microsoft Edge";
+ else if(/SamsungBrowser\//.test(ua))browser="Samsung Internet";
+ else if(/OPR\//.test(ua))browser="Opera";
+ else if(/Firefox\//.test(ua))browser="Mozilla Firefox";
+ else if(/CriOS\//.test(ua))browser="Google Chrome (iOS)";
+ else if(/FxiOS\//.test(ua))browser="Firefox (iOS)";
+ else if(/Chrome\//.test(ua))browser="Google Chrome";
+ else if(/Safari\//.test(ua))browser="Apple Safari";
+ return {browser,mobile};
+}
+function renderCompatibility(){
+ const {browser,mobile}=detectBrowser();
+ $("compatBrowserName").textContent=browser;
+ $("compatDeviceType").textContent=mobile?"Mobile device":"Desktop or tablet";
+ $("compatBrowserIcon").textContent=/Safari/.test(browser)?"◉":/Firefox/.test(browser)?"◈":/Chrome|Edge/.test(browser)?"◆":"◈";
+ $("compatSecure").textContent=window.isSecureContext?"Secure connection":"Limited context";
+ const checks=[
+  ["Secure context",!!window.isSecureContext],
+  ["Cache storage", "caches" in window],
+  ["Offline service workers","serviceWorker" in navigator],
+  ["Folder picker","showDirectoryPicker" in window],
+  ["File selection","File" in window&&"FileReader" in window],
+  ["SHA-256 duplicate scan",!!(window.crypto&&crypto.subtle)]
+ ];
+ $("compatResults").innerHTML=checks.map(([label,ok])=>'<div class="compat-item"><span class="compat-status '+(ok?"yes":"no")+'">'+(ok?"✓":"–")+'</span><span>'+escapeHtml(label)+'</span></div>').join("");
+}
+if($("refreshCompatibility"))$("refreshCompatibility").addEventListener("click",()=>{renderCompatibility();showToast("Browser capabilities refreshed.");});
+renderCompatibility();
+
 if("serviceWorker" in navigator&&location.protocol!=="file:")window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 $("folderSupport").textContent="Folder access works in supported Chromium browsers over HTTPS or localhost. Other browsers can select individual files.";

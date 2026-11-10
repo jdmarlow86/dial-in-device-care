@@ -1,0 +1,1 @@
+{"name":"Dial-In Device Care","short_name":"Device Care","description":"Private browser-based device storage analysis and maintenance.","start_url":"./","scope":"./","display":"standalone","background_color":"#f5f7fa","theme_color":"#101827","icons":[{"src":"assets/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]}

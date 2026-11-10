@@ -39,6 +39,18 @@ async function clearDeviceCareCache(){
  button.disabled=true;button.textContent="Cleaning…";
  const messages=[];
  try{
+  if("serviceWorker" in navigator){
+   const registrations=await navigator.serviceWorker.getRegistrations();
+   const appPath=new URL("./",location.href).pathname;
+   const ownRegistrations=registrations.filter(reg=>{try{return new URL(reg.scope).origin===location.origin&&new URL(reg.scope).pathname===appPath}catch{return false}});
+   const workers=[navigator.serviceWorker.controller,...ownRegistrations.flatMap(reg=>[reg.active,reg.waiting,reg.installing])].filter(Boolean);
+   for(const worker of workers){
+    await new Promise(resolve=>{const channel=new MessageChannel(),timer=setTimeout(resolve,500);channel.port1.onmessage=()=>{clearTimeout(timer);channel.port1.close();resolve();};worker.postMessage({type:"DEVICE_CARE_DISABLE_CACHE"},[channel.port2]);});
+   }
+   let unregistered=0;
+   for(const reg of ownRegistrations){if(await reg.unregister())unregistered++;}
+   if(unregistered)messages.push("offline worker disabled");
+  }
   if("caches" in window){
    const cacheNames=await caches.keys();
    const ownCaches=cacheNames.filter(name=>name.startsWith(APP_CACHE_PREFIX));
@@ -46,13 +58,6 @@ async function clearDeviceCareCache(){
    for(const name of ownCaches){if(await caches.delete(name))removed++;}
    messages.push(removed+" app cache"+(removed===1?"":"s")+" cleared");
   }else messages.push("Cache Storage is unavailable in this browser");
-  if("serviceWorker" in navigator){
-   const registrations=await navigator.serviceWorker.getRegistrations();
-   const ownRegistrations=registrations.filter(reg=>{try{return new URL(reg.scope).origin===location.origin&&new URL(reg.scope).pathname.startsWith(new URL("./",location.href).pathname)}catch{return false}});
-   let unregistered=0;
-   for(const reg of ownRegistrations){if(await reg.unregister())unregistered++;}
-   if(unregistered)messages.push("offline worker disabled");
-  }
   if(clearData){
    try{
     for(const key of Object.keys(localStorage)){if(key.startsWith("device-care:"))localStorage.removeItem(key);}

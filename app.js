@@ -1,7 +1,7 @@
 const $ = id => document.getElementById(id);
 const state = {files:[],duplicateGroups:[],lastScan:null,folderName:"",folderHandle:null};
-const LARGE_FILE=250*1024*1024, views=["overview","storage","duplicates","reports"];
-const names={overview:"Overview",storage:"Storage analyzer",duplicates:"Duplicate finder",reports:"Reports"};
+const LARGE_FILE=250*1024*1024, views=["overview","storage","duplicates","reports","cleaner"];
+const names={overview:"Overview",storage:"Storage analyzer",duplicates:"Duplicate finder",reports:"Reports",cleaner:"Browser cleaner"};
 let toastTimer;
 function formatBytes(bytes){if(!Number.isFinite(bytes)||bytes<0)return "—";if(!bytes)return "0 B";const units=["B","KB","MB","GB","TB"],i=Math.min(Math.floor(Math.log(bytes)/Math.log(1024)),4);return (bytes/Math.pow(1024,i)).toFixed(i===0?0:1)+" "+units[i]}
 function showToast(message){const el=$("toast");el.textContent=message;el.classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove("show"),3000)}
@@ -30,5 +30,50 @@ async function analyzeDuplicates(rawFiles){if(!window.crypto||!crypto.subtle){sh
 function renderDuplicates(){const groups=state.duplicateGroups,copies=groups.reduce((sum,g)=>sum+g.length-1,0),bytes=groups.reduce((sum,g)=>sum+(g.length-1)*g[0].size,0);$("duplicateGroups").textContent=groups.length.toLocaleString();$("duplicateCopies").textContent=copies.toLocaleString();$("duplicateSpace").textContent=formatBytes(bytes);$("duplicateMetric").textContent=copies.toLocaleString();if(!groups.length){$("duplicateResults").innerHTML='<div class="empty-state"><div>⧉</div><strong>No exact duplicates found</strong><p>Files with identical content will appear here.</p></div>';return}$("duplicateResults").innerHTML=groups.map((group,index)=>'<div class="duplicate-group"><h4>Group '+(index+1)+' · '+group.length+' identical files · '+formatBytes(group[0].size)+' each</h4>'+group.map(item=>'<div class="duplicate-file"><span title="'+escapeHtml(item.path)+'">'+escapeHtml(item.path)+'</span><strong>'+formatBytes(item.size)+'</strong></div>').join("")+'<p class="muted">Review these files in your file manager before deleting any copy.</p></div>').join("")}
 function renderReport(files,total,large){const rows=[["Folder or selection",state.folderName],["Scan date",state.lastScan.toLocaleString()],["Files analyzed",files.length.toLocaleString()],["Combined file size",formatBytes(total)],["Files over 250 MB",large.length.toLocaleString()],["Original files modified","No"]];$("reportDetails").innerHTML=rows.map(row=>'<div class="detail-row"><span>'+escapeHtml(row[0])+'</span><strong>'+escapeHtml(row[1])+'</strong></div>').join("")}
 function exportReport(){if(!state.lastScan){showToast("Run a scan before exporting a report.");return}const total=state.files.reduce((sum,item)=>sum+item.size,0),rows=[["Dial-In Device Care report"],["Scan date",state.lastScan.toISOString()],["Selection",state.folderName],["Files analyzed",state.files.length],["Total size (bytes)",total],["Large files (250 MB+)",state.files.filter(item=>item.size>=LARGE_FILE).length],[],["Largest files"],["Name","Path","Size (bytes)"],...state.files.slice().sort((a,b)=>b.size-a.size).slice(0,100).map(item=>[item.name,item.path,item.size])],csv=rows.map(row=>row.map(value=>'"'+String(value??"").replace(/"/g,'""')+'"').join(",")).join("\r\n"),blob=new Blob([csv],{type:"text/csv;charset=utf-8"}),url=URL.createObjectURL(blob),link=document.createElement("a");link.href=url;link.download="device-care-report.csv";link.click();URL.revokeObjectURL(url);showToast("Your report has been exported.")}
+
+const APP_CACHE_PREFIX="dial-in-device-care-";
+const APP_DB_NAME="dial-in-device-care";
+$("clearAppCache").addEventListener("click",clearDeviceCareCache);
+async function clearDeviceCareCache(){
+ const button=$("clearAppCache"),clearData=$("clearAppData").checked;
+ button.disabled=true;button.textContent="Cleaning…";
+ const messages=[];
+ try{
+  if("caches" in window){
+   const cacheNames=await caches.keys();
+   const ownCaches=cacheNames.filter(name=>name.startsWith(APP_CACHE_PREFIX));
+   let removed=0;
+   for(const name of ownCaches){if(await caches.delete(name))removed++;}
+   messages.push(removed+" app cache"+(removed===1?"":"s")+" cleared");
+  }else messages.push("Cache Storage is unavailable in this browser");
+  if("serviceWorker" in navigator){
+   const registrations=await navigator.serviceWorker.getRegistrations();
+   const ownRegistrations=registrations.filter(reg=>{try{return new URL(reg.scope).origin===location.origin&&new URL(reg.scope).pathname.startsWith(new URL("./",location.href).pathname)}catch{return false}});
+   let unregistered=0;
+   for(const reg of ownRegistrations){if(await reg.unregister())unregistered++;}
+   if(unregistered)messages.push("offline worker disabled");
+  }
+  if(clearData){
+   try{
+    for(const key of Object.keys(localStorage)){if(key.startsWith("device-care:"))localStorage.removeItem(key);}
+    for(const key of Object.keys(sessionStorage)){if(key.startsWith("device-care:"))sessionStorage.removeItem(key);}
+   }catch{}
+   if("indexedDB" in window){
+    try{indexedDB.deleteDatabase(APP_DB_NAME);messages.push("app database removal requested");}catch{}
+   }
+   messages.push("app-specific saved preferences cleared");
+  }
+  $("cleanerResultTitle").textContent="Cleanup request completed";
+  $("cleanerResultText").textContent=messages.join(" · ")+". Reload the page to fetch fresh app files. Your browser may retain other cached website data.";
+  $("cleanerResult").classList.remove("hidden");
+  showToast("Device Care cleanup completed.");
+ }catch(error){
+  $("cleanerResultTitle").textContent="Some cleanup steps could not finish";
+  $("cleanerResultText").textContent="Your browser may restrict cache controls. Try the browser's site settings for broader cleanup.";
+  $("cleanerResult").classList.remove("hidden");
+  showToast("The browser restricted part of the cleanup.");
+ }finally{button.disabled=false;button.innerHTML="<span>⌁</span> Clear cache";}
+}
+
 if("serviceWorker" in navigator&&location.protocol!=="file:")window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 $("folderSupport").textContent="Folder access works in supported Chromium browsers over HTTPS or localhost. Other browsers can select individual files.";

@@ -81,37 +81,50 @@ async function clearDeviceCareCache(){
 }
 
 
+
 function detectBrowser(){
  const ua=navigator.userAgent||"",mobile=navigator.userAgentData?.mobile??/Android|iPhone|iPad|iPod|Mobile/i.test(ua);
- let browser="Unknown browser";
- if(/Edg\//.test(ua))browser="Microsoft Edge";
- else if(/SamsungBrowser\//.test(ua))browser="Samsung Internet";
- else if(/OPR\//.test(ua))browser="Opera";
- else if(/Firefox\//.test(ua))browser="Mozilla Firefox";
- else if(/CriOS\//.test(ua))browser="Google Chrome (iOS)";
- else if(/FxiOS\//.test(ua))browser="Firefox (iOS)";
- else if(/Chrome\//.test(ua))browser="Google Chrome";
- else if(/Safari\//.test(ua))browser="Apple Safari";
- return {browser,mobile};
+ const ios=/iPhone|iPad|iPod/i.test(ua),android=/Android/i.test(ua),mac=/Macintosh|Mac OS X/i.test(ua),windows=/Windows/i.test(ua);
+ let browser="unknown";
+ if(/EdgA\//.test(ua)||/EdgiOS\//.test(ua)||/Edg\//.test(ua))browser="edge";
+ else if(/SamsungBrowser\//.test(ua))browser="samsung";
+ else if(/OPR\//.test(ua)||/Opera/i.test(ua))browser="opera";
+ else if(/FxiOS\//.test(ua)||/Firefox\//.test(ua))browser="firefox";
+ else if(/CriOS\//.test(ua)||/Chrome\//.test(ua))browser="chrome";
+ else if(/Safari\//.test(ua))browser="safari";
+ return {browser,mobile,ios,android,mac,windows};
 }
-function renderCompatibility(){
- const {browser,mobile}=detectBrowser();
- $("compatBrowserName").textContent=browser;
- $("compatDeviceType").textContent=mobile?"Mobile device":"Desktop or tablet";
- $("compatBrowserIcon").textContent=/Safari/.test(browser)?"◉":/Firefox/.test(browser)?"◈":/Chrome|Edge/.test(browser)?"◆":"◈";
- $("compatSecure").textContent=window.isSecureContext?"Secure connection":"Limited context";
- const checks=[
-  ["Secure context",!!window.isSecureContext],
-  ["Cache storage", "caches" in window],
-  ["Offline service workers","serviceWorker" in navigator],
-  ["Folder picker","showDirectoryPicker" in window],
-  ["File selection","File" in window&&"FileReader" in window],
-  ["SHA-256 duplicate scan",!!(window.crypto&&crypto.subtle)]
- ];
- $("compatResults").innerHTML=checks.map(([label,ok])=>'<div class="compat-item"><span class="compat-status '+(ok?"yes":"no")+'">'+(ok?"✓":"–")+'</span><span>'+escapeHtml(label)+'</span></div>').join("");
+const guideData={
+ chrome:{name:"Google Chrome",url:"https://support.google.com/chrome/answer/2392709",steps:os=>os.android?["Open Chrome and tap the ⋮ menu.","Tap Delete browsing data.","Choose All time for the time range.","Open More options and select only Cached images and files. Leave other categories unchecked.","Tap Delete data."]:["Open Chrome and select ⋮ > Delete browsing data (or press Ctrl+Shift+Delete on Windows/Linux, ⌘+Shift+Delete on Mac).","Set Time range to All time.","Select only Cached images and files. Leave browsing history, cookies, passwords, and other categories unchecked.","Select Delete data."]},
+ edge:{name:"Microsoft Edge",url:"https://support.microsoft.com/en-us/microsoft-edge",steps:os=>os.android||os.ios?["Open Edge and tap the menu button.","Open Settings > Privacy and security > Clear browsing data.","Choose All time if offered.","Select only Cached images and files, then clear the data."]:["Open Edge and select Settings and more (…) > Settings > Privacy, search, and services.","Under Clear browsing data, choose Choose what to clear.","Set Time range to All time.","Select only Cached images and files, then select Clear now."]},
+ firefox:{name:"Mozilla Firefox",url:"https://support.mozilla.org/en-US/kb/how-clear-firefox-cache",steps:os=>os.android||os.ios?["Open Firefox and open the menu (⋮ or ☰).","Open Settings > Delete browsing data (wording may vary by version).","Choose Cached images and files only; leave history, cookies, and other items unchecked.","Tap Delete browsing data / Delete."]:["Open Firefox Settings > Privacy & Security.","Under Cookies and Site Data, select Clear Data (or Clear browsing data).","Set When to Everything / All time.","Select only Temporary cached files and pages (or Cached web content). Leave cookies and site data unchecked, then clear."]},
+ safari:{name:"Apple Safari",url:"https://support.apple.com/en-us/105082",steps:os=>os.ios?["Safari on iPhone/iPad does not provide a cache-only, all-time clear control in Settings.","For a broader reset: Settings > Apps > Safari > Advanced > Website Data > Remove All Website Data. This can remove sign-ins and website data; it is not cache-only.","Alternatively, Settings > Apps > Safari > Clear History and Website Data also clears history and other website data."]:["For cache only on Mac: enable the Develop menu in Safari > Settings > Advanced (Show features for web developers).","Then choose Develop > Empty Caches from the menu bar.","This empties Safari's cache without using the Clear History control."]},
+ samsung:{name:"Samsung Internet",url:"https://www.samsung.com/us/support/",steps:os=>["Open Samsung Internet and tap the ☰ menu.","Open Settings > Personal browsing data > Delete browsing data.","Choose the time range All time, if shown.","Select only Cached images and files. Leave cookies, site data, and browsing history unchecked.","Tap Delete data."]},
+ opera:{name:"Opera",url:"https://help.opera.com/en/latest/web-preferences/",steps:os=>["Open Opera's menu and choose Settings.","Go to Privacy & security > Delete browsing data (or Clear browsing data).","Set the time range to All time.","Select only Cached images and files; leave cookies and browsing history unchecked.","Confirm Clear data."]}
+};
+function guideSelection(){
+ const detected=detectBrowser(),chosen=$("guideBrowserSelect")?.value||"auto";
+ return {detected,browser:chosen==="auto"?detected.browser:chosen};
 }
-if($("refreshCompatibility"))$("refreshCompatibility").addEventListener("click",()=>{renderCompatibility();showToast("Browser capabilities refreshed.");});
+function renderBrowserGuide(){
+ const {detected,browser}=guideSelection(),data=guideData[browser]||null;
+ const title=$("guideBrowserTitle"),platform=$("guidePlatform"),steps=$("browserGuideSteps"),link=$("guideHelpLink"),badge=$("guideDetected"),caution=$("guideCaution");
+ const os={android:detected.android,ios:detected.ios,mac:detected.mac,windows:detected.windows};
+ const platformName=detected.ios?"iPhone / iPad":detected.android?"Android":detected.mac?"macOS":detected.windows?"Windows":"Desktop / other";
+ if(title)title.textContent=data?data.name+" cache settings":"Browser not recognized";
+ if(platform)platform.textContent=platformName+(detected.mobile?" · Mobile":" · Desktop");
+ if(badge)badge.textContent=browser===detected.browser?"Detected":"Selected manually";
+ if(steps)steps.innerHTML=(data?data.steps(os):["Open your browser's Settings.","Find Privacy, History, or Browsing data.","Choose the cache-only option if available and set the time range to All time."]).map(item=>"<li>"+escapeHtml(item)+"</li>").join("");
+ if(link){link.href=data?data.url:"https://support.google.com/chrome/answer/2392709";link.textContent="Official support instructions ↗";}
+ if(caution)caution.textContent=browser==="safari"&&detected.ios?"Safari on iPhone/iPad does not offer a cache-only all-time option. Removing all website data is broader and may sign you out.": "Important: select only cached images/files if you want to keep browsing history, cookies, and saved passwords. Browser labels can vary by version.";
+}
+
+if($("refreshCompatibility"))$("refreshCompatibility").addEventListener("click",()=>{renderCompatibility();renderBrowserGuide();showToast("Browser capabilities refreshed.");});
+if($("guideBrowserSelect"))$("guideBrowserSelect").addEventListener("change",renderBrowserGuide);
 renderCompatibility();
+const detectedGuide=detectBrowser();
+if($("guideBrowserSelect"))$("guideBrowserSelect").value=guideData[detectedGuide.browser]?"auto":"chrome";
+renderBrowserGuide();
 
 if("serviceWorker" in navigator&&location.protocol!=="file:")window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 $("folderSupport").textContent="Folder access works in supported Chromium browsers over HTTPS or localhost. Other browsers can select individual files.";
